@@ -1,0 +1,16 @@
+{
+  "name": "buzz-plugin-gemini",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Buzz desktop plugin for Gemini via Antigravity ACP, with Buzz and Composio tools",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/carlomanuali/buzz-plugin-gemini.git"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node --check plugin/plugin.js && python3 -m py_compile src/composio_bridge.py && node test/plugin.test.mjs"
+  }
+}
