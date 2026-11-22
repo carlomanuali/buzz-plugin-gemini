@@ -35,6 +35,8 @@ function fakeHost() {
             case 'session/prompt':
               // Tool calls Gemini makes while the turn runs.
               if (host.duringPrompt) host.inTurn = await host.duringPrompt();
+              // A child that ignores the cancel and never answers.
+              if (host.hang) return;
               out({
                 jsonrpc: '2.0', method: 'session/update',
                 params: {
@@ -163,8 +165,21 @@ host.duringPrompt = async () => {
   await stop();
   return (await toolCall(host.servers.at(-1))).result.content[0].text;
 };
-await mention();
+const repliesBeforeStop = replies.length;
+assert.deepEqual(await mention(), { ok: true, stopped: true });
 assert.match(host.inTurn, /No Gemini turn is running/);
+// Stop raced an end_turn answer: nothing is posted.
+assert.equal(replies.length, repliesBeforeStop);
+
+// A child that ignores the cancel: Stop settles the turn at once, as stopped,
+// and posts nothing.
+host.hang = true;
+host.duringPrompt = async () => { setTimeout(() => void stop(), 0); };
+const started = Date.now();
+assert.deepEqual(await mention(), { ok: true, stopped: true });
+assert.ok(Date.now() - started < 2000);
+assert.equal(replies.length, repliesBeforeStop);
+host.hang = false;
 
 runtime.dispose();
 console.log('Runtime checks passed');

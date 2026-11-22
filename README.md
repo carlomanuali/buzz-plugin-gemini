@@ -76,8 +76,8 @@ When settings apply:
 - For every session, Buzz serves a local MCP server named `buzz`. It carries
   Buzz's conversation tools plus four Composio tools: `composio_connections`,
   `composio_search`, `composio_schema` and `composio_execute`. These call the
-  Composio CLI through a small Python bridge embedded in the manifest. The
-  bridge runs only fixed `composio` subcommands, never a shell command or a
+  Composio CLI through a small Python bridge embedded in the manifest, where
+  you can read it in the install review. The bridge runs only fixed `composio` subcommands, never a shell command or a
   program chosen by the model.
 - The first message of a new session starts with a short header from the
   plugin: the agent's name, where it is answering, that its final message is
@@ -107,7 +107,8 @@ When settings apply:
   every tool call is refused; only the tool list still answers. A call that
   started before Stop can still finish.
 - Turns in one conversation run one at a time. Stop cancels the running
-  turn. Starting `agy acp` and opening a session each have 60 seconds; a
+  turn at once, even if Gemini does not stop, and nothing is posted after
+  it. Starting `agy acp` and opening a session each have 60 seconds; a
   missed one replaces the process. A turn has 20 minutes; a turn that runs
   over is cancelled, and the next mention starts a new session.
 - **Failures** are posted in the conversation and tag you. A post uses only
@@ -151,7 +152,10 @@ npm run check   # syntax checks, unit tests, runtime tests against a stand-in ag
 
 `plugin/` is the installable folder: `manifest.json` and one self-contained
 `plugin.js`, with no imports. Edit the bridge in `src/composio_bridge.py` and
-run `npm run build`; CI fails if the manifest is out of date.
+run `npm run build`; CI fails if the manifest is out of date. Buzz accepts
+at most 16 arguments of 1024 bytes each per host command, so the build
+splits the bridge into whole-line chunks after a one-line loader that joins
+and runs them; the build fails if the bridge outgrows that.
 
 ## License
 

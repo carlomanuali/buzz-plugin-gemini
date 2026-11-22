@@ -60,6 +60,16 @@ assert.equal(Array.isArray((await mcpHandler(async (m) => ({jsonrpc:'2.0',id:m.i
 const bridge = manifest.host.commands[0];
 assert.equal(bridge.program, 'python3');
 assert.equal(bridge.args[0], '-c');
+// Buzz's limits for a host command: at most 16 arguments, each at most 1024
+// bytes, no NUL. The chunks after the loader join back to the bridge source.
+for (const command of [...manifest.host.commands, ...manifest.host.processes]) {
+  assert.ok(command.args.length <= 16, `${command.id}: too many arguments`);
+  for (const arg of command.args) {
+    assert.ok(Buffer.byteLength(arg) <= 1024, `${command.id}: argument over 1024 bytes`);
+    assert.ok(!arg.includes('\0'));
+  }
+}
+assert.equal(bridge.args.slice(2).join(''), readFileSync(new URL('../src/composio_bridge.py', import.meta.url), 'utf8'));
 assert.ok(!/\/Users\/[^/]+\/REPOS/.test(JSON.stringify(manifest)));
 assert.ok(!/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(JSON.stringify(manifest)));
 const result = spawnSync('python3', bridge.args, {input:'{"operation":"invalid"}',encoding:'utf8'});

@@ -432,7 +432,7 @@ export function mcpHandler(buzz, host, session, allowWrites = false, active = ()
   };
 }
 
-/** Thrown when the owner's Stop ends a turn before it reached Gemini. */
+/** Thrown when the owner's Stop ends a turn: nothing is posted after it. */
 const STOPPED = Symbol("stopped");
 
 /** A turn's Stop: settles `signal` and cancels whatever the turn is doing. */
@@ -548,7 +548,8 @@ export class GeminiRuntime {
       .catch(() => {})
       .then(() => this.turn(delivery, entry, conversation, saved, control))
       .catch((error) =>
-        error === STOPPED
+        // After Stop nothing is posted, not even a failure that follows it.
+        error === STOPPED || control.stopped
           ? { ok: true, stopped: true }
           : { ok: false, error: failureReport(error) },
       )
@@ -735,6 +736,10 @@ export class GeminiRuntime {
           sessionId: session.id,
           prompt: [{ type: "text", text }],
         }),
+        // Stop settles the wait at once, whatever Gemini does with the cancel.
+        control.signal.then(() => {
+          throw STOPPED;
+        }),
         new Promise((_, reject) => {
           timer = setTimeout(() => {
             void control.cancel?.();
@@ -746,6 +751,7 @@ export class GeminiRuntime {
           }, this.turnMs);
         }),
       ]);
+      if (stale()) throw STOPPED;
       // Shown once Gemini has it, whatever the answer.
       session.cursor = prompt.cursor;
     } catch (error) {
@@ -767,6 +773,8 @@ export class GeminiRuntime {
       throw new PublicError(
         `Gemini stopped without an answer (${stopReason(result?.stopReason)}).`,
       );
+    // The last check before posting: a Stop since the answer posts nothing.
+    if (stale()) throw STOPPED;
     if (!session.answered)
       await this.harness.reply(agent, conversation, body || "_Gemini finished without a reply._");
     return { ok: true };
