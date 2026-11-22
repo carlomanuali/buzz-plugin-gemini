@@ -288,6 +288,16 @@ function stopReason(value) {
   return STOP_REASONS.has(value) ? value : "unknown";
 }
 
+const READ_ONLY_NOTE = "You are in read-only mode: Buzz tools that change something and Composio actions (composio_execute) are refused; Composio search and schema still work. If the owner asks for something they need, tell them to enable Allow tool changes in the agent's settings.";
+const WRITES_NOTE = "Allow tool changes is now on: Buzz tools that change something and Composio actions (composio_execute) are available. Make changes only when the owner requested them.";
+
+/** A line for an open session whose tool mode changed since it was told,
+ * or "". The session keeps its history; only this turn carries the line. */
+export function modeNotice(announced, allowWrites) {
+  if (announced === allowWrites) return "";
+  return `<buzz-context>${allowWrites ? WRITES_NOTE : READ_ONLY_NOTE}</buzz-context>`;
+}
+
 /** The head of a new session's first message: who Gemini is here and how its
  * answer is used. Only what Gemini needs; nothing from the agent's Buzz memory. */
 export function remotePrompt(agent, conversation, saved) {
@@ -301,8 +311,7 @@ export function remotePrompt(agent, conversation, saved) {
     "</buzz-context>",
   ];
   const instructions = saved.instructions.trim();
-  if (!saved.allowWrites)
-    lines.push("You are in read-only mode: Buzz tools that change something and Composio actions (composio_execute) are refused; Composio search and schema still work. If the owner asks for something they need, tell them to enable Allow tool changes in the agent's settings.");
+  if (!saved.allowWrites) lines.push(READ_ONLY_NOTE);
   if (instructions)
     lines.push("<owner-instructions>", instructions, "</owner-instructions>");
   return lines.join("\n");
@@ -394,7 +403,7 @@ export function mcpHandler(buzz, host, session, allowWrites = false, active = ()
       const response = await buzz(message);
       if (
         !response?.error && !response?.result?.isError &&
-        ["send", "reply_in_subthread", "edit", "react"].includes(name)
+        ["send", "reply_in_subthread"].includes(name)
       ) {
         const current = session();
         if (current) current.answered = true;
@@ -610,11 +619,11 @@ export class GeminiRuntime {
     let session = entry.sessions.get(conversation.key);
     if (session && session.process !== process) session = undefined;
     // A new workspace or model needs a new session; it is shown the
-    // conversation again.
+    // conversation again. The old one stays until the new one gets the
+    // prompt, so a change that fails leaves it usable.
+    let previous;
     if (session && (session.workspace !== saved.workspace || session.model !== saved.model)) {
-      entry.sessions.delete(conversation.key);
-      void session.server?.close().catch(() => {});
-      void process.request("session/close", { sessionId: session.id }).catch(() => {});
+      previous = session;
       session = undefined;
     }
     const fresh = !session;
@@ -655,6 +664,7 @@ export class GeminiRuntime {
         session = {
           id: created.sessionId, cursor: undefined, process, server, answered: false,
           workspace: saved.workspace, model: saved.model, allowWrites: false,
+          announced: saved.allowWrites,
         };
         void server.closed.then(() => {
           if (entry.sessions.get(conversation.key) === session)
@@ -693,10 +703,13 @@ export class GeminiRuntime {
     }
     // ACP takes no separate system prompt: head the first message.
     // Not the kit's systemPrompt: that carries the agent's Buzz core memory,
-    // teams and repositories, which do not leave this computer.
+    // teams and repositories, which the plugin does not append (Gemini can
+    // still read memory with the mem_get tool).
+    const notice = fresh ? "" : modeNotice(session.announced, saved.allowWrites);
+    session.announced = saved.allowWrites;
     const text = fresh
       ? `${remotePrompt(agent, conversation, saved)}\n\n${prompt.text}`
-      : prompt.text;
+      : notice ? `${notice}\n\n${prompt.text}` : prompt.text;
 
     const answer = new TurnText(() => !stale());
     session.answered = false;
@@ -712,6 +725,11 @@ export class GeminiRuntime {
     try {
       delivery.accepted?.();
       entry.sessions.set(conversation.key, session);
+      if (previous) {
+        void previous.server?.close().catch(() => {});
+        void process.request("session/close", { sessionId: previous.id }).catch(() => {});
+        previous = undefined;
+      }
       result = await Promise.race([
         process.request("session/prompt", {
           sessionId: session.id,

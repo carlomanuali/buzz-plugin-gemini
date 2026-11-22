@@ -48,7 +48,7 @@ no API keys to paste and no server to host.
 
 | Setting | Effect |
 | --- | --- |
-| Allow tool changes in Buzz and Composio | Off by default: Gemini can use Buzz tools that only read, and search Composio tools and their schemas. On: it can also post, edit and react in Buzz, and run Composio actions. |
+| Allow tool changes in Buzz and Composio | Off by default: Gemini can use Buzz tools that only read, and search Composio tools and their schemas. On: it can also use every Buzz tool that changes data (posting, editing and reacting, but also deleting channels, removing members, and changing canvases, notes, memory and agents) and run Composio actions. |
 | Workspace | Absolute path of an existing folder. Antigravity's session runs there. Required. |
 | Gemini model ID | Blank picks a Gemini model automatically. Otherwise an ID from `agy models`, such as `gemini-…`. Only Gemini models are accepted. |
 | Instructions | Added at the start of each new Gemini session. |
@@ -57,9 +57,11 @@ no API keys to paste and no server to host.
 When settings apply:
 
 - **Allow tool changes:** from the next mention, in sessions that are
-  already open too.
+  already open too. That turn's message tells Gemini about the new mode.
 - **Workspace and model:** from the next mention. The conversation gets a new
-  Gemini session, which is shown the conversation so far.
+  Gemini session, which is shown the conversation so far. If the new session
+  cannot start (for example, a model your account does not offer), the old
+  one is kept.
 - **Instructions:** in new sessions (a new thread, a new workspace or model,
   or after the Antigravity process restarts).
 - **Sessions:** a different scope is a different conversation, so the next
@@ -79,15 +81,17 @@ When settings apply:
   program chosen by the model.
 - The first message of a new session starts with a short header from the
   plugin: the agent's name, where it is answering, that its final message is
-  the reply, and your instructions. Nothing from the agent's Buzz memory,
-  teams or repositories is sent.
+  the reply, and your instructions. The plugin does not add the agent's Buzz
+  memory, teams or repositories. Gemini can still read the agent's memory
+  with the `mem_get` tool, like any other tool result.
 - Gemini's final message is posted as the agent's reply. If Gemini already
-  replied with a Buzz tool, nothing is posted twice.
+  posted its answer with `send` or `reply_in_subthread`, nothing is posted
+  twice.
 
 ## Behaviour
 
-- **Who can start a turn:** only your own mentions. Buzz's harness checks
-  this. Watches, timers and other plugins' wakes are ignored, because the
+- **Who can start a turn:** only your own mentions, or mentions you
+  attested. Buzz's harness checks this. Watches, timers and other plugins' wakes are ignored, because the
   agent works with your accounts.
 - **Approvals:** the plugin approves Gemini's calls to the `buzz` MCP server
   one at a time and declines everything else, including Antigravity's
@@ -98,12 +102,14 @@ When settings apply:
   one named like a lookup: the plugin cannot know which upstream actions
   have side effects. Every other call is refused with a message that tells
   Gemini to ask you to allow changes.
-- **Only during a turn:** the tool server answers calls only while a turn
-  is running and current. After the answer, after Stop, and between
-  mentions, every call is refused.
+- **Only during a turn:** the tool server runs tools only while a turn is
+  running and current. After the answer, after Stop, and between mentions,
+  every tool call is refused; only the tool list still answers. A call that
+  started before Stop can still finish.
 - Turns in one conversation run one at a time. Stop cancels the running
-  turn. Starting `agy acp` and opening a session each have 60 seconds, and a
-  turn has 20 minutes. A missed deadline replaces the process.
+  turn. Starting `agy acp` and opening a session each have 60 seconds; a
+  missed one replaces the process. A turn has 20 minutes; a turn that runs
+  over is cancelled, and the next mention starts a new session.
 - **Failures** are posted in the conversation and tag you. A post uses only
   the plugin's own words and a reference; the details go to the Buzz app log
   under that reference.

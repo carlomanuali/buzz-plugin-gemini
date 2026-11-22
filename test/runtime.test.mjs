@@ -104,6 +104,8 @@ saved = { ...saved, allowWrites: true };
 await mention();
 assert.equal(count('session/new'), 1);
 assert.equal(host.inTurn, undefined);
+const promptText = () => calls.filter((call) => call.method === 'session/prompt').at(-1).params.prompt[0].text;
+assert.match(promptText(), /^<buzz-context>Allow tool changes is now on/);
 
 // Once the turn is over, the open server refuses every call, writes included.
 const after = await toolCall(host.servers[0]);
@@ -115,6 +117,10 @@ saved = { ...saved, allowWrites: false };
 await mention();
 assert.equal(count('session/new'), 1);
 assert.equal(host.inTurn, true);
+assert.match(promptText(), /^<buzz-context>You are in read-only mode/);
+// The same mode again: no notice.
+await mention();
+assert.equal(promptText(), 'question');
 
 // A new model: the old session is closed and a new one opens on that model.
 saved = { ...saved, model: 'gemini-b' };
@@ -134,6 +140,14 @@ saved = { ...saved, model: 'other-c' };
 const failed = await mention();
 assert.equal(failed.ok, false);
 assert.match(replies.at(-1), /Gemini model other-c is unavailable/);
+// The failed change kept the working session: back on the old model, the
+// same session answers and none opens.
+const workingSession = calls.filter((call) => call.method === 'session/prompt').at(-1).params.sessionId;
+const opened = count('session/new');
+saved = { ...saved, model: 'gemini-b' };
+assert.deepEqual(await mention(), { ok: true });
+assert.equal(count('session/new'), opened);
+assert.equal(calls.filter((call) => call.method === 'session/prompt').at(-1).params.sessionId, workingSession);
 
 // A relative workspace is refused before anything starts.
 saved = { ...saved, model: '', workspace: 'relative/path' };

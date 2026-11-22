@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { chooseGeminiModel, config, DEFAULT_CONFIG, mcpHandler, TurnText } from '../plugin/plugin.js';
+import { chooseGeminiModel, config, DEFAULT_CONFIG, mcpHandler, modeNotice, TurnText } from '../plugin/plugin.js';
 
 const manifest = JSON.parse(readFileSync(new URL('../plugin/manifest.json', import.meta.url), 'utf8'));
 assert.equal(manifest.host.processes[0].program, 'agy');
@@ -13,6 +13,21 @@ assert.equal(chooseGeminiModel(models), 'gemini-new');
 assert.equal(chooseGeminiModel(models, 'gemini-other'), 'gemini-other');
 assert.throws(() => chooseGeminiModel(models, 'claude-other'));
 
+assert.equal(modeNotice(false, false), '');
+assert.match(modeNotice(false, true), /now on/);
+assert.match(modeNotice(true, false), /read-only mode/);
+// Only a Buzz message counts as the answer: a reaction does not hide the reply.
+{
+  const answeredBy = async (name) => {
+    const state = {answered:false};
+    const ok = async (m) => ({jsonrpc:'2.0',id:m.id,result:{content:[]}});
+    await mcpHandler(ok, {}, () => state, true)({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:{}}});
+    return state.answered;
+  };
+  assert.equal(await answeredBy('send'), true);
+  assert.equal(await answeredBy('react'), false);
+  assert.equal(await answeredBy('edit'), false);
+}
 const approval = new TurnText();
 const ask = (name) => ({toolCall:{name},options:[{kind:'allow_once',optionId:'allow'}]});
 assert.deepEqual(approval.permission(ask('mcp_buzz_composio_connections')), {outcome:'selected',optionId:'allow'});
