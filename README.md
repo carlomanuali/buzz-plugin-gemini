@@ -22,8 +22,8 @@ no API keys to paste and no server to host.
   channels and members, and read canvases and notes.
 - **Connected apps through Composio (optional).** Gemini searches for the
   right Composio tool, checks its schema, then runs it with the accounts
-  signed in on your computer.
-- **Read-only by default.** Changes in Buzz and in Composio apps stay off
+  signed in on your computer (once you allow tool changes).
+- **Read-only by default.** Changes in Buzz and Composio actions stay off
   until you allow them for that agent. Antigravity's own terminal and file
   tools are never approved.
 - **Small and self-contained.** One JavaScript file and a manifest. No npm
@@ -48,7 +48,7 @@ no API keys to paste and no server to host.
 
 | Setting | Effect |
 | --- | --- |
-| Allow tool changes in Buzz and Composio | Off by default: Gemini can only read. On: it can also post, edit, react, and run Composio actions that change data. |
+| Allow tool changes in Buzz and Composio | Off by default: Gemini can use Buzz tools that only read, and search Composio tools and their schemas. On: it can also post, edit and react in Buzz, and run Composio actions. |
 | Workspace | Absolute path of an existing folder. Antigravity's session runs there. Required. |
 | Gemini model ID | Blank picks a Gemini model automatically. Otherwise an ID from `agy models`, such as `gemini-…`. Only Gemini models are accepted. |
 | Instructions | Added at the start of each new Gemini session. |
@@ -92,12 +92,15 @@ When settings apply:
 - **Approvals:** the plugin approves Gemini's calls to the `buzz` MCP server
   one at a time and declines everything else, including Antigravity's
   terminal and file-edit tools. Nothing is approved after you press Stop.
-- **Read-only mode** (the default) allows Buzz tools that only read, and
-  Composio actions whose slug reads as a lookup (`…_GET_…`, `…_LIST_…`,
-  `…_SEARCH_…`, `…_FIND_…`, and similar). Every other call is refused with a
-  message that tells Gemini to ask you to allow changes. This name check is
-  conservative, but it is not a guarantee that an upstream tool has no side
-  effects.
+- **Read-only mode** (the default) allows a fixed list of Buzz tools that
+  only read, plus `composio_connections`, `composio_search` and
+  `composio_schema`. No Composio action runs (`composio_execute`), not even
+  one named like a lookup: the plugin cannot know which upstream actions
+  have side effects. Every other call is refused with a message that tells
+  Gemini to ask you to allow changes.
+- **Only during a turn:** the tool server answers calls only while a turn
+  is running and current. After the answer, after Stop, and between
+  mentions, every call is refused.
 - Turns in one conversation run one at a time. Stop cancels the running
   turn. Starting `agy acp` and opening a session each have 60 seconds, and a
   turn has 20 minutes. A missed deadline replaces the process.
@@ -119,6 +122,8 @@ When settings apply:
 - The plugin stores no credentials. Antigravity and Composio keep their own
   sign-ins on your computer. The plugin never adds
   `--dangerously-skip-permissions`.
+- The Composio bridge refuses search queries and account names that start
+  with a dash, so the model cannot pass options to the Composio CLI.
 
 ## Requirements
 

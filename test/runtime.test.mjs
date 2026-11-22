@@ -9,8 +9,10 @@ let nextSession = 0;
 
 function fakeHost() {
   const servers = [];
-  return {
+  const host = {
     servers,
+    duringPrompt: undefined,
+    inTurn: undefined,
     async spawn(_id, { onStdout }) {
       const out = (message) => queueMicrotask(() => onStdout(`${JSON.stringify(message)}\n`));
       return {
@@ -31,6 +33,8 @@ function fakeHost() {
               },
             });
             case 'session/prompt':
+              // Tool calls Gemini makes while the turn runs.
+              if (host.duringPrompt) host.inTurn = await host.duringPrompt();
               out({
                 jsonrpc: '2.0', method: 'session/update',
                 params: {
@@ -50,6 +54,7 @@ function fakeHost() {
       return server;
     },
   };
+  return host;
 }
 
 const replies = [];
@@ -66,6 +71,7 @@ let saved = { workspace: '/tmp', model: '', allowWrites: false };
 const host = fakeHost();
 const runtime = new GeminiRuntime(host, harness, { current: () => saved });
 
+let stop;
 async function mention() {
   let done;
   await runtime.run({
@@ -73,6 +79,7 @@ async function mention() {
     agent: { key: 'agent-1', name: 'Test Gemini' },
     config: { workspace: '/tmp' },
     workingUntil: (promise) => { done = promise; },
+    interruptible: (fn) => { stop = fn; },
   });
   return done;
 }
@@ -81,25 +88,33 @@ const toolCall = (server) => server.handler({
   jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'channel_delete', arguments: { id: 'x' } },
 });
 
+// Each turn deletes a channel through its tool server while it runs.
+host.duringPrompt = async () => (await toolCall(host.servers.at(-1))).result.isError;
+
 // First mention: one process, one session on the automatic Gemini model.
 assert.deepEqual(await mention(), { ok: true });
 assert.deepEqual(replies, ['hello']);
 assert.equal(count('initialize'), 1);
 assert.equal(count('session/new'), 1);
 assert.equal(calls.find((call) => call.method === 'session/set_model').params.modelId, 'gemini-a');
-assert.equal((await toolCall(host.servers[0])).result.isError, true);
+assert.equal(host.inTurn, true);
 
 // Writes turned on: same session, and its tool server now allows changes.
 saved = { ...saved, allowWrites: true };
 await mention();
 assert.equal(count('session/new'), 1);
-assert.equal((await toolCall(host.servers[0])).result.isError, undefined);
+assert.equal(host.inTurn, undefined);
+
+// Once the turn is over, the open server refuses every call, writes included.
+const after = await toolCall(host.servers[0]);
+assert.equal(after.result.isError, true);
+assert.match(after.result.content[0].text, /No Gemini turn is running/);
 
 // Writes turned off again: refused in the same open session.
 saved = { ...saved, allowWrites: false };
 await mention();
 assert.equal(count('session/new'), 1);
-assert.equal((await toolCall(host.servers[0])).result.isError, true);
+assert.equal(host.inTurn, true);
 
 // A new model: the old session is closed and a new one opens on that model.
 saved = { ...saved, model: 'gemini-b' };
@@ -126,6 +141,16 @@ const sessionsBefore = count('session/new');
 assert.equal((await mention()).ok, false);
 assert.match(replies.at(-1), /absolute Workspace path/);
 assert.equal(count('session/new'), sessionsBefore);
+
+// Stop: a tool call that arrives after the owner pressed Stop is refused,
+// even with writes allowed.
+saved = { workspace: '/tmp', model: '', allowWrites: true };
+host.duringPrompt = async () => {
+  await stop();
+  return (await toolCall(host.servers.at(-1))).result.content[0].text;
+};
+await mention();
+assert.match(host.inTurn, /No Gemini turn is running/);
 
 runtime.dispose();
 console.log('Runtime checks passed');

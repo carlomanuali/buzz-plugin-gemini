@@ -27,10 +27,20 @@ assert.equal((await call('channel_get')).result.isError, undefined);
 assert.equal((await call('channel_delete')).result.isError, true);
 assert.equal((await call('composio_execute', {slug:'GITHUB_DELETE_A_REPOSITORY'})).result.isError, true);
 assert.equal(bridgeCalls, 0);
-assert.equal((await call('composio_execute', {slug:'GITHUB_GET_THE_AUTHENTICATED_USER',arguments:{}})).result.isError, undefined);
+// Read-only mode runs no Composio action, even one named like a lookup.
+assert.equal((await call('composio_execute', {slug:'GITHUB_GET_THE_AUTHENTICATED_USER',arguments:{}})).result.isError, true);
+assert.equal(bridgeCalls, 0);
+assert.equal((await call('composio_search', {query:'github user'})).result.isError, undefined);
 assert.equal(bridgeCalls, 1);
 const allowAll = mcpHandler(buzz, host, () => undefined, true);
-assert.equal((await allowAll({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'channel_delete',arguments:{id:'x'}}})).result.isError, undefined);
+const callAll = (name, args) => allowAll({jsonrpc:'2.0',id:2,method:'tools/call',params:{name,arguments:args}});
+assert.equal((await callAll('channel_delete', {id:'x'})).result.isError, undefined);
+assert.equal((await callAll('composio_execute', {slug:'GITHUB_GET_THE_AUTHENTICATED_USER',arguments:{}})).result.isError, undefined);
+assert.equal(bridgeCalls, 2);
+// Outside a running turn no tool call is served, reads included.
+const idle = mcpHandler(buzz, host, () => undefined, true, () => false);
+assert.equal((await idle({jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'read',arguments:{}}})).result.isError, true);
+assert.equal(Array.isArray((await mcpHandler(async (m) => ({jsonrpc:'2.0',id:m.id,result:{tools:[]}}), host, () => undefined, false, () => false)({jsonrpc:'2.0',id:4,method:'tools/list'})).result.tools), true);
 
 const bridge = manifest.host.commands[0];
 assert.equal(bridge.program, 'python3');
@@ -40,4 +50,15 @@ assert.ok(!/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(JSON.stringify(manifest
 const result = spawnSync('python3', bridge.args, {input:'{"operation":"invalid"}',encoding:'utf8'});
 assert.equal(result.status, 0);
 assert.equal(JSON.parse(result.stdout).ok, false);
+// Values the Composio CLI could read as options are refused before it runs.
+for (const request of [
+  {operation:'search', query:'--help'},
+  {operation:'execute', slug:'GITHUB_GET_THE_AUTHENTICATED_USER', arguments:{}, account:'-x'},
+  {operation:'execute', slug:'GITHUB_GET_THE_AUTHENTICATED_USER', arguments:{}, account:'  '},
+]) {
+  const refused = spawnSync('python3', bridge.args, {input:JSON.stringify(request),encoding:'utf8',env:{...process.env,COMPOSIO_BIN:'/bin/false'}});
+  const parsed = JSON.parse(refused.stdout);
+  assert.equal(parsed.ok, false);
+  assert.match(parsed.error, /dash|nonempty/);
+}
 console.log('Plugin checks passed');

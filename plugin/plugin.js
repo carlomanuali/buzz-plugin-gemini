@@ -302,7 +302,7 @@ export function remotePrompt(agent, conversation, saved) {
   ];
   const instructions = saved.instructions.trim();
   if (!saved.allowWrites)
-    lines.push("Buzz and Composio tools are in read-only mode. If a tool refuses a change, tell your owner to enable Allow tool changes in the agent's settings.");
+    lines.push("You are in read-only mode: Buzz tools that change something and Composio actions (composio_execute) are refused; Composio search and schema still work. If the owner asks for something they need, tell them to enable Allow tool changes in the agent's settings.");
   if (instructions)
     lines.push("<owner-instructions>", instructions, "</owner-instructions>");
   return lines.join("\n");
@@ -357,11 +357,12 @@ const READ_ONLY_BUZZ_TOOLS = new Set([
   "member_list", "users", "mem_get", "notes_get", "canvas_get", "canvas_history",
   "plugin_list", "plugin_discover", "plugin_request_status",
 ]);
-const READ_ONLY_COMPOSIO_ACTION = /^[A-Z][A-Z0-9_]*_(?:GET|LIST|SEARCH|FIND|FETCH|RETRIEVE|QUERY|LOOKUP|WHO_AM_I)_[A-Z0-9_]+$/;
 
 /** `allowWrites` is a boolean or a function asked at each tool call, so a
- * change to the setting reaches sessions that are already open. */
-export function mcpHandler(buzz, host, session, allowWrites = false) {
+ * change to the setting reaches sessions that are already open. `active()`
+ * is asked at each tool call too: false outside a current, running turn
+ * (after Stop, after the answer, or before the next mention). */
+export function mcpHandler(buzz, host, session, allowWrites = false, active = () => true) {
   const writable = typeof allowWrites === "function" ? allowWrites : () => allowWrites === true;
   return async (message) => {
     const method = message?.method;
@@ -380,10 +381,11 @@ export function mcpHandler(buzz, host, session, allowWrites = false) {
       jsonrpc: "2.0", id,
       result: { content: [{ type: "text", text: error }], isError: true },
     });
+    if (!active()) return failure("No Gemini turn is running, so this tool call is refused.");
     if (!writable()) {
+      // Composio cannot say which actions only read, so none run here.
       if (name === "composio_execute") {
-        if (typeof args?.slug !== "string" || !READ_ONLY_COMPOSIO_ACTION.test(args.slug))
-          return failure("This Composio action is unavailable in read-only mode. Enable Allow tool changes in the agent's settings if the owner requested a change.");
+        return failure("Composio actions are unavailable in read-only mode. Enable Allow tool changes in the agent's settings if the owner wants them.");
       } else if (!COMPOSIO_TOOLS.some((tool) => tool.name === name) && !READ_ONLY_BUZZ_TOOLS.has(name)) {
         return failure("This Buzz tool is unavailable in read-only mode. Enable Allow tool changes in the agent's settings if the owner requested a change.");
       }
@@ -627,7 +629,11 @@ export class GeminiRuntime {
       let created;
       try {
         server = await this.step(
-          this.host.serveMcp(mcpHandler(buzzTools, this.host, () => session, () => session?.allowWrites === true)),
+          this.host.serveMcp(mcpHandler(
+            buzzTools, this.host, () => session,
+            () => session?.allowWrites === true,
+            () => session?.live?.() === true,
+          )),
           control, process, this.startMs, "start tools",
         );
         created = await this.step(
@@ -694,8 +700,10 @@ export class GeminiRuntime {
 
     const answer = new TurnText(() => !stale());
     session.answered = false;
-    // Read at each tool call: turning the setting off applies from this turn.
+    // Read at each tool call: turning the setting off applies from this turn,
+    // and no tool call is served once this turn is stopped or over.
     session.allowWrites = saved.allowWrites;
+    session.live = () => !stale();
     const unlisten = process.listen(session.id, answer);
     control.cancel = () =>
       process.notify("session/cancel", { sessionId: session.id }).catch(() => {});
@@ -731,6 +739,7 @@ export class GeminiRuntime {
     } finally {
       clearTimeout(timer);
       unlisten();
+      session.live = undefined;
       control.cancel = undefined;
     }
 

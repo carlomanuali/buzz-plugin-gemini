@@ -53,6 +53,13 @@ def required_string(request, key, maximum=500):
     return value.strip()
 
 
+def not_option(key, value):
+    # A value the CLI could read as an option is refused, not passed on.
+    if value.startswith("-"):
+        raise ValueError(f"{key} must not start with a dash")
+    return value
+
+
 def slug(request):
     value = required_string(request, "slug", 151)
     if not SLUG.fullmatch(value):
@@ -80,7 +87,7 @@ def run(request):
             if isinstance(accounts, list)
         }
     if operation == "search":
-        query = required_string(request, "query")
+        query = not_option("query", required_string(request, "query"))
         limit = request.get("limit", 8)
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 20:
             raise ValueError("limit must be an integer from 1 to 20")
@@ -101,11 +108,8 @@ def run(request):
         if len(encoded.encode("utf-8")) > 60_000:
             raise ValueError("arguments exceed the 60 KB command limit")
         args = ["execute", slug(request), "-d", "-"]
-        account = request.get("account")
-        if account is not None:
-            if not isinstance(account, str) or not 1 <= len(account) <= 150:
-                raise ValueError("account must be a string up to 150 characters")
-            args += ["--account", account]
+        if request.get("account") is not None:
+            args += ["--account", not_option("account", required_string(request, "account", 150))]
         return cli(args, encoded)
     raise ValueError("Unknown Composio bridge operation")
 
