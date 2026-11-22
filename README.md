@@ -107,8 +107,9 @@ When settings apply:
   every tool call is refused; only the tool list still answers. A call that
   started before Stop can still finish.
 - Turns in one conversation run one at a time. Stop cancels the running
-  turn at once, even if Gemini does not stop, and nothing is posted after
-  it. Starting `agy acp` and opening a session each have 60 seconds; a
+  turn at once, even if Gemini does not stop. The plugin posts no reply or
+  failure after Stop; a reply already being posted, or a tool call already
+  accepted, can still finish. Starting `agy acp` and opening a session each have 60 seconds; a
   missed one replaces the process. A turn has 20 minutes; a turn that runs
   over is cancelled, and the next mention starts a new session.
 - **Failures** are posted in the conversation and tag you. A post uses only
