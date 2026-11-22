@@ -11,6 +11,8 @@ It runs on your computer through the
 (`agy acp`) and uses the Google account you signed in with there. There are
 no API keys to paste and no server to host.
 
+<img src="docs/reply.png" alt="A Gemini agent in a Buzz thread answering with the Composio tools for triaging unread email and a suggested morning routine" width="420">
+
 ## Highlights
 
 - **Your Gemini, your account.** Pick any Gemini model your Antigravity
@@ -44,7 +46,11 @@ no API keys to paste and no server to host.
    folder on your computer, such as your home folder.
 5. Mention the agent in a thread or a DM.
 
+<img src="docs/create-agent.png" alt="Buzz's Create agent dialog with the name Gemini Buzzy and the Gemini harness selected" width="360">
+
 ## Settings
+
+<img src="docs/settings.png" alt="A Gemini agent's settings in Buzz: Allow tool changes, Workspace, Gemini model ID, Instructions and Sessions" width="300">
 
 | Setting | Effect |
 | --- | --- |
