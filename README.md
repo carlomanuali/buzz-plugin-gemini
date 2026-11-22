@@ -1,37 +1,146 @@
 # Gemini for Buzz
 
-Bring a Gemini model from the [Google Antigravity CLI](https://antigravity.google/docs/getting-started?tab=cli) into [Buzz](https://buzz.xyz). The agent can answer in threads, use Buzz's conversation tools, and optionally use the connected accounts in the Composio CLI.
+**Put Gemini in your [Buzz](https://buzz.xyz) threads.** Mention the agent and
+it answers in the conversation. It can read the thread, search Buzz and, if
+you use the [Composio CLI](https://docs.composio.dev/cli/quickstart), reach
+the apps you have connected there: Gmail, Calendar, GitHub, Asana, Slack and
+many more.
 
-This plugin uses the local `agy acp` server. It works with **Gemini model IDs advertised by your own Antigravity account**, without a fixed model or account. Leave the model field blank for automatic Gemini selection, or enter an ID from `agy models`. Availability and authentication depend on your Antigravity account.
+It runs on your computer through the
+[Google Antigravity CLI](https://antigravity.google/docs/getting-started?tab=cli)
+(`agy acp`) and uses the Google account you signed in with there. There are
+no API keys to paste and no server to host.
 
-## Install
+## Highlights
 
-1. Install the [Antigravity CLI](https://antigravity.google/docs/getting-started?tab=cli), sign in with `agy` or `agy acp --login`, and check `agy models`.
-2. Install Python 3. The `python3` command must be available to Buzz. For Composio tools, also install and sign in to the [Composio CLI](https://docs.composio.dev/cli/quickstart) (`composio login`). Composio is optional; Buzz tools work without it.
-3. In Buzz desktop 1.x, open **Settings → Plugins → Manage plugins → Add**, then add this Git repository and select the `plugin` folder. Or use the [Buzz install link](buzz://plugin-install?repository=https%3A%2F%2Fgithub.com%2Fcarlomanuali%2Fbuzz-plugin-gemini.git&path=plugin).
-4. Create an agent of type **Gemini**, set **Workspace** to an existing absolute directory on your computer, and optionally set a Gemini model ID. Mention the agent in a DM or thread.
+- **Your Gemini, your account.** Pick any Gemini model your Antigravity
+  account offers (`agy models`), or leave the model blank and the plugin
+  chooses one.
+- **Knows the conversation.** Each thread (or channel) keeps its own Gemini
+  session, so follow-up questions just work.
+- **Buzz tools built in.** Gemini can read threads, search messages, look up
+  channels and members, and read canvases and notes.
+- **Connected apps through Composio (optional).** Gemini searches for the
+  right Composio tool, checks its schema, then runs it with the accounts
+  signed in on your computer.
+- **Read-only by default.** Changes in Buzz and in Composio apps stay off
+  until you allow them for that agent. Antigravity's own terminal and file
+  tools are never approved.
+- **Small and self-contained.** One JavaScript file and a manifest. No npm
+  dependencies, no install script, no build step to install.
 
-The `plugin/` folder is ready to install. Its `manifest.json` embeds the small Python bridge so no path to the plugin source is needed at runtime. The plugin has no npm dependencies or install script.
+## Quick start
 
-## Tools and access
+1. Install the [Antigravity CLI](https://antigravity.google/docs/getting-started?tab=cli),
+   sign in (`agy acp --login`), and check that `agy models` lists Gemini
+   models.
+2. Make sure `python3` is installed. Optional: install the
+   [Composio CLI](https://docs.composio.dev/cli/quickstart) and run
+   `composio login`.
+3. In Buzz desktop 1.x, open **Settings → Plugins → Manage plugins → Add**,
+   add this Git repository and select the `plugin` folder. Or open the
+   [Buzz install link](buzz://plugin-install?repository=https%3A%2F%2Fgithub.com%2Fcarlomanuali%2Fbuzz-plugin-gemini.git&path=plugin).
+4. Create an agent of type **Gemini** and set **Workspace** to an existing
+   folder on your computer, such as your home folder.
+5. Mention the agent in a thread or a DM.
 
-- Buzz tools are provided by Buzz in a local MCP server for each conversation.
-- With Composio installed, `composio_connections`, `composio_search`, `composio_schema`, and `composio_execute` use the CLI account signed in on **your** computer.
-- The plugin accepts Antigravity's one-call permission request for tools on that MCP server. By default, Buzz tools that change state and Composio actions that do not look like read operations are refused. The name-based Composio read check is conservative, but not a formal guarantee that an upstream tool has no side effects.
-- **Allow tool changes in Buzz and Composio** is an opt-in agent setting. It permits the MCP tools to act on the connected accounts, including sending messages or changing data. Enable it only if you trust the agent and its instructions. The agent is told to make changes only when its owner asks.
-- Antigravity's own terminal and file-edit permissions are declined. It runs with `--sandbox`; the plugin never adds `--dangerously-skip-permissions`.
-- The prompt sent to Antigravity includes the current Buzz conversation and your agent instructions. Tool calls may send data from Buzz or connected services to the selected model. Buzz core memory, teams and repositories are not appended by this plugin.
+## Settings
 
-The plugin has been tested on macOS with Buzz 1.0.6 and `agy` 1.5.14. Other combinations need their own verification. Python 3 and the CLI executables must be discoverable by Buzz; on macOS, the Composio bridge also checks `~/.local/bin/composio` when Buzz's `PATH` omits it.
+| Setting | Effect |
+| --- | --- |
+| Allow tool changes in Buzz and Composio | Off by default: Gemini can only read. On: it can also post, edit, react, and run Composio actions that change data. |
+| Workspace | Absolute path of an existing folder. Antigravity's session runs there. Required. |
+| Gemini model ID | Blank picks a Gemini model automatically. Otherwise an ID from `agy models`, such as `gemini-…`. Only Gemini models are accepted. |
+| Instructions | Added at the start of each new Gemini session. |
+| Sessions | One session per thread (default) or one per channel. |
+
+When settings apply:
+
+- **Allow tool changes:** from the next mention, in sessions that are
+  already open too.
+- **Workspace and model:** from the next mention. The conversation gets a new
+  Gemini session, which is shown the conversation so far.
+- **Instructions:** in new sessions (a new thread, a new workspace or model,
+  or after the Antigravity process restarts).
+- **Sessions:** a different scope is a different conversation, so the next
+  mention starts a new session.
+
+## How it works
+
+- Each Gemini agent has one `agy acp` process on your computer. It runs with
+  `--sandbox --process-per-session --disable-telemetry`, and holds one session
+  per conversation. After 30 idle minutes the process stops. The next mention
+  starts a new one, and Buzz shows it the conversation again.
+- For every session, Buzz serves a local MCP server named `buzz`. It carries
+  Buzz's conversation tools plus four Composio tools: `composio_connections`,
+  `composio_search`, `composio_schema` and `composio_execute`. These call the
+  Composio CLI through a small Python bridge embedded in the manifest. The
+  bridge runs only fixed `composio` subcommands, never a shell command or a
+  program chosen by the model.
+- The first message of a new session starts with a short header from the
+  plugin: the agent's name, where it is answering, that its final message is
+  the reply, and your instructions. Nothing from the agent's Buzz memory,
+  teams or repositories is sent.
+- Gemini's final message is posted as the agent's reply. If Gemini already
+  replied with a Buzz tool, nothing is posted twice.
+
+## Behaviour
+
+- **Who can start a turn:** only your own mentions. Buzz's harness checks
+  this. Watches, timers and other plugins' wakes are ignored, because the
+  agent works with your accounts.
+- **Approvals:** the plugin approves Gemini's calls to the `buzz` MCP server
+  one at a time and declines everything else, including Antigravity's
+  terminal and file-edit tools. Nothing is approved after you press Stop.
+- **Read-only mode** (the default) allows Buzz tools that only read, and
+  Composio actions whose slug reads as a lookup (`…_GET_…`, `…_LIST_…`,
+  `…_SEARCH_…`, `…_FIND_…`, and similar). Every other call is refused with a
+  message that tells Gemini to ask you to allow changes. This name check is
+  conservative, but it is not a guarantee that an upstream tool has no side
+  effects.
+- Turns in one conversation run one at a time. Stop cancels the running
+  turn. Starting `agy acp` and opening a session each have 60 seconds, and a
+  turn has 20 minutes. A missed deadline replaces the process.
+- **Failures** are posted in the conversation and tag you. A post uses only
+  the plugin's own words and a reference; the details go to the Buzz app log
+  under that reference.
+
+## Privacy and trust
+
+- The prompt sent to Gemini includes the conversation the agent is shown and
+  your instructions. Tool results, from Buzz or from connected apps, also go
+  to the model. Use a Google account and model whose data terms suit that
+  content.
+- With **Allow tool changes** on, Gemini can act on your Buzz account and on
+  every app connected in your Composio CLI whenever you mention it. That
+  includes being steered by text it reads, such as earlier messages in the
+  thread or content from a connected app. Turn it on only for an agent you
+  trust, with instructions you wrote.
+- The plugin stores no credentials. Antigravity and Composio keep their own
+  sign-ins on your computer. The plugin never adds
+  `--dangerously-skip-permissions`.
+
+## Requirements
+
+- Buzz desktop 1.x. Checked with Buzz 1.0.6 on macOS.
+- The Antigravity CLI (`agy`) on the `PATH` Buzz sees. Checked with
+  `agy` 1.5.14.
+- Python 3 (`python3`) for the Composio bridge.
+- Optional: the Composio CLI, signed in. On macOS the bridge also looks in
+  `~/.local/bin/composio` when Buzz's `PATH` does not include it.
+
+Other platforms and versions should work but have not been checked.
 
 ## Development
 
 ```sh
-npm run build
-npm run check
+npm run build   # embed src/composio_bridge.py into plugin/manifest.json
+npm run check   # syntax checks, unit tests, runtime tests against a stand-in agy
 ```
 
-`scripts/build.mjs` packages `src/composio_bridge.py` into `plugin/manifest.json`. The private `dist/` folder is excluded from Git. There are no runtime npm dependencies.
+`plugin/` is the installable folder: `manifest.json` and one self-contained
+`plugin.js`, with no imports. Edit the bridge in `src/composio_bridge.py` and
+run `npm run build`; CI fails if the manifest is out of date.
 
 ## License
 
