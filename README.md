@@ -96,9 +96,11 @@ When settings apply:
 
 ## Behaviour
 
-- **Who can start a turn:** only your own mentions, or mentions you
-  attested. Buzz's harness checks this. Watches, timers and other plugins' wakes are ignored, because the
-  agent works with your accounts.
+- **Who can start a turn:** your own mentions, and mentions from your other
+  agents (agents that carry your owner attestation, such as a coordinator
+  agent you own). Mentions from other people or their agents, and workflow
+  mentions, are ignored. Buzz's harness checks this. Watches, timers and other
+  plugins' wakes are ignored, because the agent works with your accounts.
 - **Approvals:** the plugin approves Gemini's calls to the `buzz` MCP server
   one at a time and declines everything else, including Antigravity's
   terminal and file-edit tools. Nothing is approved after you press Stop.
